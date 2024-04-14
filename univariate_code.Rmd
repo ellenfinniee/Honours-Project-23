@@ -1,0 +1,304 @@
+---
+title: "Univariate analysis"
+output: html_document
+date: "2024-04-05"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(astsa)
+library(tidyverse)
+library(ggplot2)
+library(tsibble)
+library(plm)
+library(latex2exp)
+```
+
+```{r initial import of air quality data and CSV creation}
+# NOTE this is included as an example, very slow to run and CSV files are already available in git repo
+library(openair)
+aq_locations <- importMeta(source = "saqn", all = TRUE) |>
+  filter(local_authority == "Dundee City") |>
+  filter(end_date == "ongoing")
+
+library(readxl)
+library(writexl)
+codes <- aq_locations |> distinct(code) |> mutate_all(.funs = tolower)
+aq_data <- importSAQN(site = codes$code, year = c(2015,2016,2017,2018,2019,2020,2021,2022,2023))
+write_csv(aq_data9, "aq_data9.csv")
+
+```
+
+
+```{r cleaning air quality data}
+
+aq_data9 = read.csv("aq_data9.csv")
+
+
+# Extracts the area name from the raw data. Note this takes ~25 mins to run
+for(i in 1:nrow(aq_data9)){
+  aq_data9[i, 4]<-paste(substr(aq_data9[i, 4], 1,10), substr(aq_data9[i, 4], 12,19), sep=" ")
+}
+
+# Format data into R recognised date format
+aq_data9$date <- as.POSIXct(aq_data9$date, format = "%Y-%m-%d %H:%M:%S")
+
+
+
+# Create latitude and longitude columns then update to reflect that of each indiviual station
+aq_data9$lat <- c(56.47543)
+aq_data9$lon <- c(-2.959861)
+
+aq_data9 <- within(aq_data9, lat[code == 'DUN4'] <- c(56.46733))
+aq_data9 <- within(aq_data9, lat[code == 'DUN6'] <- c(56.46513))
+aq_data9 <- within(aq_data9, lat[code == 'DUNM'] <- c(56.46426))
+aq_data9 <- within(aq_data9, lat[code == 'DUN5'] <- c(56.46238))
+aq_data9 <- within(aq_data9, lat[code == 'DUN7'] <- c(56.45974))
+
+aq_data9 <- within(aq_data9, lon[code == 'DUN4'] <- c(-2.943423))
+aq_data9 <- within(aq_data9, lon[code == 'DUN6'] <- c(-2.993867))
+aq_data9 <- within(aq_data9, lon[code == 'DUNM'] <- c(-2.971386))
+aq_data9 <- within(aq_data9, lon[code == 'DUN5'] <- c(-2.967390))
+aq_data9 <- within(aq_data9, lon[code == 'DUN7'] <- c(-2.970708))
+
+
+# Specify which columns to use as factors 
+aq_data9$source <- factor(aq_data9$source)
+aq_data9$site <- factor(aq_data9$site)
+aq_data9$code <- factor(aq_data9$code)
+```
+
+
+```{r readings from all 6 monitors (report fig 6.4)}
+
+# Create an arbitrary variable in order to rename variables for cleaner graph formatting
+holder <- aq_data9
+holder <- holder |> rename(NOx=nox)
+holder <- holder |> rename(NO=no)
+holder <- holder |> rename(NO2=no2)
+holder <- holder |> rename(PM10=pm10)
+holder <- holder |> rename(PM2.5=pm2.5)
+
+# Pivot dataframe for more efficient plotting
+longdat <- holder |> pivot_longer(cols = c("NOx", "NO", "NO2", "PM10", "PM2.5"), names_to = "Pollutant", values_to = "Level")
+
+
+# Plots graph of all pollutant levels from all 6 monitors
+ggplot(longdat |> filter(Pollutant != "NOx"), aes(x = date, y = Level, color = Pollutant)) + 
+  geom_line() +
+  facet_grid(rows = vars(site), scales = "free_y",labeller = label_wrap_gen(width = 10))+
+  theme_classic() +
+  ggtitle("Pollutant level recordings from all 6 monitors from all 6 monitors since 2015") +
+  xlab("Date") +
+  ylab(TeX(r'(Level, $\mu$g/$m^3$)'))+
+  theme(legend.position = ("bottom"))
+
+```
+
+```{r removing seasonality from each monitor's data}
+
+# Creating subseries for each individual monitor from main data set
+broughty_ferry <-  subset(aq_data9 |> filter(code=="DUN4"), select = c(date, nox, pm10,pm2.5) ) 
+lochee_road <-  subset(aq_data9 |> filter(code=="DUN6"), select = c(date, nox, pm10,pm2.5) ) 
+mains_loan <-  subset(aq_data9 |> filter(code=="DUN1"), select = c(date, nox, pm10,pm2.5) ) 
+meadowside <-  subset(aq_data9 |> filter(code=="DUNM"), select = c(date, nox, pm10,pm2.5) ) 
+seagate <-  subset(aq_data9 |> filter(code=="DUN5"), select = c(date, nox, pm10,pm2.5) )
+whitehall_street <-  subset(aq_data9 |> filter(code=="DUN7"), select = c(date, nox, pm10,pm2.5) ) 
+
+# Replacing any NA pollutant values with 0s
+broughty_ferry$nox[is.na(broughty_ferry$nox)] <- 0
+broughty_ferry$pm10[is.na(broughty_ferry$pm10)] <- 0
+broughty_ferry$pm2.5[is.na(broughty_ferry$pm2.5)] <- 0
+
+lochee_road$nox[is.na(lochee_road$nox)] <- 0
+lochee_road$pm10[is.na(lochee_road$pm10)] <- 0
+lochee_road$pm2.5[is.na(lochee_road$pm2.5)] <- 0
+
+mains_loan$nox[is.na(mains_loan$nox)] <- 0
+mains_loan$pm10[is.na(mains_loan$pm10)] <- 0
+mains_loan$pm2.5[is.na(mains_loan$pm2.5)] <- 0
+
+meadowside$nox[is.na(meadowside$nox)] <- 0
+meadowside$pm10[is.na(meadowside$pm10)] <- 0
+meadowside$pm2.5[is.na(meadowside$pm2.5)] <- 0
+
+seagate$nox[is.na(seagate$nox)] <- 0
+seagate$pm10[is.na(seagate$pm10)] <- 0
+seagate$pm2.5[is.na(seagate$pm2.5)] <- 0
+
+whitehall_street$nox[is.na(whitehall_street$nox)] <- 0
+whitehall_street$pm10[is.na(whitehall_street$pm10)] <- 0
+whitehall_street$pm2.5[is.na(whitehall_street$pm2.5)] <- 0
+
+
+
+# Removing NAs from data column (due to inconsistencies from time changes each March)
+broughty_ferry <- broughty_ferry |> na.omit()
+lochee_road <- lochee_road |> na.omit()
+mains_loan <- mains_loan |> na.omit()
+meadowside <- meadowside |> na.omit()
+seagate <- seagate |> na.omit()
+whitehall_street <- whitehall_street |> na.omit()
+
+# Change from regular data frame to specific time series data frame
+dat_bf <- broughty_ferry |> as_tsibble() |> fill_gaps(nox = 0L, pm10=0L, pm2.5=0L)
+dat_l <- lochee_road |> as_tsibble() |> fill_gaps(nox = 0L, pm10=0L, pm2.5=0L)
+dat_ml <- mains_loan |> as_tsibble() |> fill_gaps(nox = 0L, pm10=0L, pm2.5=0L)
+dat_m <- meadowside |> as_tsibble() |> fill_gaps(nox = 0L, pm10=0L, pm2.5=0L)
+dat_s <- seagate |> as_tsibble() |> fill_gaps(nox = 0L, pm10=0L, pm2.5=0L)
+dat_w <- whitehall_street |> as_tsibble() |> fill_gaps(nox = 0L, pm10=0L, pm2.5=0L)
+```
+
+```{r nox seasonal decomposition}
+
+# Decompose each monitor location using NOx as the pollutant
+seasonal_bf <- dat_bf |> model(STL(nox ~ season(period="1 year"))) |> components()
+# Reassign each locations code
+seasonal_bf$code <- "DUN4"
+# Remove any irrelevant/duplicate values from the new dataframe
+seasonal_bf <- data.frame(subset(seasonal_bf, select= -c(.model, nox)))
+
+seasonal_l <- dat_l |> model(STL(nox ~  season(period="1 year"))) |> components()
+seasonal_l$code <- "DUN6"
+seasonal_l <- data.frame(subset(seasonal_l, select= -c(.model, nox)))
+
+seasonal_ml <- dat_ml |> model(STL(nox ~ season(period="1 year"))) |> components()
+seasonal_ml$code <- "DUN1"
+seasonal_ml <- data.frame(subset(seasonal_ml, select= -c(.model, nox)))
+
+seasonal_m <- dat_m |> model(STL(nox ~ season(period="1 year"))) |> components()
+seasonal_m$code <- "DUNM"
+seasonal_m <- data.frame(subset(seasonal_m, select= -c(.model, nox)))
+
+seasonal_s <- dat_s |> model(STL(nox ~ season(period="1 year"))) |> components()
+seasonal_s$code <- "DUN5"
+seasonal_s <- data.frame(subset(seasonal_s, select= -c(.model, nox)))
+
+seasonal_w <- dat_w |> model(STL(nox ~ season(period="1 year"))) |> components()
+seasonal_w$code <- "DUN7"
+seasonal_w <- data.frame(subset(seasonal_w, select= -c(.model, nox)))
+
+# Recombine all 6 monitors into one dataframe
+seasonal <- rbind(seasonal_bf, seasonal_l, seasonal_m, seasonal_ml, seasonal_s, seasonal_w)
+
+# Subset of original dataset 
+panel <- aq_data9 |> select(site, code, date, nox, ws, wd, air_temp ) |> drop_na()
+# Finally create full data set to be used for plotting, rename column for nicer formatting
+panel <- merge(x=panel, y=seasonal, by=c('code', 'date'))
+panel <- panel |> rename(season1=season_1.year)
+```
+
+```{r pm10 seasonal decomposition}
+
+#Exactly the same process as before, but for PM_10 rather than NOx
+
+seasonal_bf2 <- dat_bf |> model(STL(pm10 ~ season(period="1 year"))) |> components()
+seasonal_bf2$code <- "DUN4"
+seasonal_bf2 <- data.frame(subset(seasonal_bf2, select= -c(.model, pm10)))
+
+seasonal_l2 <- dat_l |> model(STL(pm10 ~  season(period="1 year"))) |> components()
+seasonal_l2$code <- "DUN6"
+seasonal_l2 <- data.frame(subset(seasonal_l2, select= -c(.model, pm10)))
+
+seasonal_ml2 <- dat_ml |> model(STL(pm10 ~ season(period="1 year"))) |> components()
+seasonal_ml2$code <- "DUN1"
+seasonal_ml2 <- data.frame(subset(seasonal_ml2, select= -c(.model, pm10)))
+
+seasonal_m2 <- dat_m |> model(STL(pm10 ~ season(period="1 year"))) |> components()
+seasonal_m2$code <- "DUNM"
+seasonal_m2 <- data.frame(subset(seasonal_m2, select= -c(.model, pm10)))
+
+seasonal_s2 <- dat_s |> model(STL(pm10 ~ season(period="1 year"))) |> components()
+seasonal_s2$code <- "DUN5"
+seasonal_s2 <- data.frame(subset(seasonal_s2, select= -c(.model, pm10)))
+
+seasonal_w2 <- dat_w |> model(STL(pm10 ~ season(period="1 year"))) |> components()
+seasonal_w2$code <- "DUN7"
+seasonal_w2 <- data.frame(subset(seasonal_w2, select= -c(.model, pm10)))
+
+seasonal2 <- rbind(seasonal_bf2, seasonal_l2, seasonal_m2, seasonal_ml2, seasonal_s2, seasonal_w2)
+
+
+panel2 <- aq_data9 |> select(site, code, date, pm10, ws, wd, air_temp, ) |> drop_na()
+panel2 <- merge(x=panel2, y=seasonal2, by=c('code', 'date'))
+panel2 <- panel2 |> rename(season1=season_1.year)
+```
+
+``` {r plotting full Lochee Road decomposition (report fig 6.5)}
+
+# Create a seasonal decomposition of Lochee road data to be plotted
+plot_l <- dat_l |> model(STL(nox ~  season(period="1 year"))) |> components()
+
+# Rename columns for nicer formatting in graph
+plot_l <- plot_l |> rename("Raw data"=nox)
+plot_l <- plot_l |> rename(Trend=trend)
+plot_l <- plot_l |> rename(Residual=remainder)
+plot_l <- plot_l |> rename("Annual seasonal period"='season_1 year')
+
+#Pivot data for more efficient graphing
+longlochee <- plot_l |> pivot_longer(cols = c("Raw data", "Trend", "Annual seasonal period", "Residual"), names_to = "Decomposition", values_to = "Component")
+
+# Plot each of the 4 components of the analysis, labelling each
+ggplot(transform(longlochee,Decomposition=factor(Decomposition,levels=c("Raw data", "Trend", "Annual seasonal period", "Residual")))) + 
+  geom_line(aes(x = date, y = Component, color = Decomposition))+
+  facet_grid(Decomposition~., scales = "free_y", 
+             labeller = label_wrap_gen(width = 10) ) +
+  theme_classic()+
+  theme(legend.position='none')+
+  xlab('Date')+
+  ylab(TeX(r'(NOx Trend, $\mu$g/$m^3$)'))
+
+```
+
+``` {r plotting raw data and trend lines for NOx (report figs 6.6 and 6.7)}
+# Plotting raw NOx data for all 6 monitors, labelling each site
+ggplot(longdat |> filter(Pollutant == "NOx"), aes(x = date, y = Level, color = site)) + 
+  geom_line() +
+  facet_grid(rows = vars(site), scales = "free_y",labeller = label_wrap_gen(width = 10))+
+  theme_classic() +
+  ggtitle(TeX(r'(Hourly $NO_x$ level recordings from all 6 monitors since 2015)')) +
+  xlab("Date") +
+  ylab(TeX(r'($NO_x$ level, $\mu$g/$m^3$)')) +
+  theme(legend.position='none' ) 
+
+# Plotting trend lines, using a different colour for each site
+panel |> ggplot(aes(x=date, y=trend)) + geom_line(aes(color=site)) + 
+  theme_classic() +
+  theme(legend.position=c(0.8,0.85)) +
+  xlab("Date") +
+  ylab(TeX(r'(Trend, $\mu$g/$m^3$)')) +
+  ggtitle(TeX(r'($NO_x$ trend lines after removing seasonality)'))
+
+```
+
+``` {r plotting raw data and trend lines for PM_10 (report figs 6.8 and 6.9)}
+# Plotting raw PM_10 data for all 6 monitors, labelling each site
+ggplot(longdat |> filter(Pollutant == "PM10"), aes(x = date, y = Level, color = site)) + 
+  geom_line() +
+  facet_grid(rows = vars(site), scales = "free_y",labeller = label_wrap_gen(width = 10))+
+  theme_classic() +
+  ggtitle(TeX(r'(Hourly $PM_{10}$ level recordings from all 6 monitors since 2015)')) +
+  xlab("Date") +
+  ylab(TeX(r'($PM_{10}$ level, $\mu$g/$m^3$)')) +
+  theme(legend.position='none' ) 
+
+
+# Key lockdown dates to annotate on graph
+lockdown_dates <- data.frame(event=c('First Lockdown',"Lockdown 1 lifted significantly", "Second Lockdown","Lockdown 2 lifted significantly","All restrictions removed"), date=c(as.POSIXct("2020-03-23 00:00:00"),as.POSIXct("2020-07-10 00:00:00"),as.POSIXct("2021-01-05 00:00:00"),as.POSIXct("2021-04-26 00:00:00"),as.POSIXct("2021-08-09 00:00:00")))
+
+
+# Plotting trend lines using a different colour for each site, and adding key lockdown dates as vertical lines
+ggplot(data=panel2, aes(x=date, y=trend)) + 
+  geom_line(aes(color=site)) + 
+  theme_classic() +
+  theme(legend.position=c(0.85,0.85) ) +
+  xlab("Date") +
+  ylab(TeX(r'(Trend, $\mu$g/$m^3$)')) +
+  ggtitle(TeX(r'($PM_{10}$ trend lines after removing seasonality)')) +
+  geom_vline(data=lockdown_dates, aes(xintercept=date)) +
+  annotate("text", x=as.POSIXct("2020-02-10 00:00:00"), y=15, label=lockdown_dates[1,1], angle=90)+
+  annotate("text", x=as.POSIXct("2020-06-01 00:00:00"), y=15, label=lockdown_labels[2,1], angle=90)+
+  annotate("text", x=as.POSIXct("2020-11-25 00:00:00"), y=15, label=lockdown_labels[3,1], angle=90)+
+  annotate("text", x=as.POSIXct("2021-03-20 00:00:00"), y=15, label=lockdown_labels[4,1], angle=90)+
+  annotate("text", x=as.POSIXct("2021-07-01 00:00:00"), y=15, label=lockdown_labels[5,1], angle=90)
+```

@@ -1,0 +1,101 @@
+---
+title: "Fixed effects modelling"
+output: html_document
+date: "2024-04-05"
+---
+
+```{r setup}
+library(plm)
+library(ggpubr)
+library(latex2exp)
+```
+
+
+```{r plot chosen predictor variables}
+#Renaming for legend
+panel <- panel |> rename(Site=site)
+
+#Create scatter plots of each predictor against NOx, add smoothing to help illustrate and possible relationship
+ws_g<-ggplot(data=panel, aes(x=nox, y=ws))+
+  geom_point(aes(color=Site))+
+  theme_classic() +
+  theme(legend.position="none")+
+  ggtitle("Wind Speed") +
+  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  ylab(TeX(r'(Speed, $ms^{-1}$)')) +
+  geom_smooth()
+
+air_g<-ggplot(data=panel, aes(x=nox, y=air_temp))+
+  geom_point(aes(color=Site))+
+  theme_classic() +
+  theme(legend.position="none")+
+  ggtitle("Air Temperature") +
+  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  ylab(TeX(r'(Temperature, $^{\circ}C$)')) +
+  geom_smooth()
+
+trend_g<-ggplot(data=panel, aes(x=nox, y=trend))+
+  geom_point(aes(color=Site))+
+  theme_classic() +
+  theme(legend.position="none")+
+  ggtitle("Trend Component") +
+  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  ylab(TeX(r'(Level, $\mu$g/$m^3$)')) +
+  geom_smooth()
+
+seas_g<-ggplot(data=panel, aes(x=nox, y=season1))+
+  geom_point(aes(color=Site))+
+  theme_classic() +
+  theme(legend.position="none")+
+  ggtitle("Seasonal Component") +
+  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  ylab(TeX(r'(Level, $\mu$g/$m^3$)')) +
+  geom_smooth()
+
+wd_g<-ggplot(data=panel, aes(x=nox, y=wd))+
+  geom_point(aes(color=Site))+
+  theme_classic() +
+  theme(legend.position="none")+
+  ggtitle("Wind Direction") +
+  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  ylab(TeX(r'(Bearing, degrees)')) +
+  geom_smooth()
+
+#Combine all plots together into a grid
+pred_plot <-ggarrange(ws_g,air_g,trend_g,seas_g,wd_g, ncol=3, nrow=2, common.legend = TRUE, legend="bottom")
+#Add title
+annotate_figure(pred_plot, top = text_grob("Potential predictor variables",face="bold", size=18))
+```
+
+```{r create fixed effects model}
+panel <- panel |> rename(site=Site)
+# Creating fixed effects model. 'wd' not included in final model, kept here as an example
+# of an insignificant predictor which was discarded for final model
+fixed <- plm(nox ~  trend + season1 + ws + air_temp + wd, data=panel, index=c("site", "date"), model="within") 
+```
+
+
+```{r initial summary (table 6.1)}
+# Note t val of 'wd' showing its statistical insignificance
+summary(fixed)
+```
+
+```{r summary of difference in means (table 6.2)}
+summary(fixef(fixed, type = "dmean"))
+```
+
+
+``` {r individual models for each site}
+# Exactly the same model set up but for each individual site
+summary(plm(nox ~ trend + season1 + ws + wd + air_temp, data=panel |> filter(code=="DUN4"), index=c("site", "date"), model="within"))
+
+summary(plm(nox ~ trend + season1 + ws + wd + air_temp, data=panel |> filter(code=="DUN6"), index=c("site", "date"), model="within"))
+
+summary(plm(nox ~ trend + season1 + ws + wd + air_temp, data=panel |> filter(code=="DUN1"), index=c("site", "date"), model="within"))
+
+summary(plm(nox ~ trend + season1 + ws + wd + air_temp, data=panel |> filter(code=="DUNM"), index=c("site", "date"), model="within"))
+
+summary(plm(nox ~ trend + season1 + ws + wd + air_temp, data=panel |> filter(code=="DUN5"), index=c("site", "date"), model="within"))
+
+summary(plm(nox ~ trend + season1 + ws + wd + air_temp, data=panel |> filter(code=="DUN7"), index=c("site", "date"), model="within"))
+```

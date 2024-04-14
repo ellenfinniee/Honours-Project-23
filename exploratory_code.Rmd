@@ -1,0 +1,130 @@
+---
+title: "Data cleaning/exploration"
+output: html_document
+date: "2024-04-05"
+---
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(writexl)
+library(sf)
+library(ggplot2)
+library(leaflet)
+library(tmap)
+library(plotly)
+library(ggthemes)
+library(osmdata)
+library(ggmap)
+library(mapview)
+library(openair)
+library(openairmaps)
+library(htmltools)
+library(latex2exp)
+library(cowplot)
+```
+
+```{r bus scores}
+#get all bus scores into table
+bus_scores <- read_excel("/Users/ellenfinnie/Documents/Uni/4th year/Project/diss/bus_accessibility.xlsx",col_names=c("ref_area_url","ref_area","weekday_score","weekend_score"),skip=8)
+
+#find data zone codes for dundee only
+dundee_zones <- read_excel("/Users/ellenfinnie/Documents/Uni/4th year/Project/diss/DataZone2011lookup.xlsx",col_names=c("DataZone","city"),skip=1) |>
+  filter(city=='Dundee City')
+
+#remove the data zone code from the corresponding URL
+bus_scores['DataZone']<- NA
+for(i in 1:6976){
+  bus_scores[i,5]=substr(bus_scores[i,1], 53,61)
+}
+
+#merge bus scores with dundee datazones, remove all non-dundee zones
+bus_scores_dundee<-merge(x = bus_scores, y = dundee_zones, by = "DataZone", all = TRUE) |>
+  na.omit()
+
+# make temp file, unzip folder and save into temp file
+temp <- tempfile()
+ZFile <- "/Users/ellenfinnie/Documents/Uni/4th year/Project/diss/SG_DataZoneBdry_2011.zip"
+unzip(zipfile = ZFile, exdir = temp)
+
+data_zones<-read_sf(temp)
+
+#merge shape file with data zones, remove any non-dundee shape data
+merged_data<-merge(x = data_zones, y = bus_scores_dundee, by = "DataZone", all = TRUE) |> 
+  na.omit()
+
+```
+
+```{r initial import of air quality data and CSV creation}
+# NOTE this is included as an example, very slow to run and CSV files are already available in git repo
+codes <- aq_locations |> distinct(code) |> mutate_all(.funs = tolower)
+aq_data <- importSAQN(site = codes$code, year = 2019)
+write_csv(aq_data, "aq_data.csv")
+
+```
+
+
+```{r filtering and cleaning bus data}
+
+aq_data = read.csv("aq_data.csv")
+
+#Extracts the area name from the raw data. Note this takes ~25 mins to run
+for(i in 1:nrow(aq_data)){
+  aq_data[i, 4]<-paste(substr(aq_data[i, 4], 1,10), substr(aq_data[i, 4],
+                                                           12,19), sep=" ")
+}
+
+# Format data into R recognised date format
+aq_data$date <- as.POSIXct(aq_data$date, format = "%Y-%m-%d %H:%M:%S")
+
+# Create latitude and longitude columns then update to reflect that of each indiviual station
+aq_data$lat <- c(56.47543)
+aq_data$lon <- c(-2.959861)
+
+aq_data <- within(aq_data, lat[code == 'DUN4'] <- c(56.46733))
+aq_data <- within(aq_data, lat[code == 'DUN6'] <- c(56.46513))
+aq_data <- within(aq_data, lat[code == 'DUNM'] <- c(56.46426))
+aq_data <- within(aq_data, lat[code == 'DUN5'] <- c(56.46238))
+aq_data <- within(aq_data, lat[code == 'DUN7'] <- c(56.45974))
+
+aq_data <- within(aq_data, lon[code == 'DUN4'] <- c(-2.943423))
+aq_data <- within(aq_data, lon[code == 'DUN6'] <- c(-2.993867))
+aq_data <- within(aq_data, lon[code == 'DUNM'] <- c(-2.971386))
+aq_data <- within(aq_data, lon[code == 'DUN5'] <- c(-2.967390))
+aq_data <- within(aq_data, lon[code == 'DUN7'] <- c(-2.970708))
+
+
+```
+
+
+
+```{r map plots (figs 5.1, 5.2 and 5.3)}
+# Generate plot of all bus scores in Dundee with added markers to reflect positions of air quality monitors
+mapView(merged_data, map.types="OpenStreetMap", layer.name="Bus Scores", zcol = "weekday_score", legend.pos="bottomright", zoom=10)+
+  mapView(monitor_locations, map.types="OpenStreetMap",
+          layer.name="Air Quality Monitors", col.regions="white",color="white", legend=FALSE)
+
+# Plot mapped air quality for both NOx and PM_10
+polarMap(
+  aq_data,
+  latitude = "lat",
+  longitude = "lon",
+  pollutant = "nox",
+  key=TRUE,
+  main="2019",
+  popup = "site",
+  limits=c(min(aq_data$nox, na.rm = TRUE),80)
+)
+
+polarMap(
+  aq_data,
+  latitude = "lat",
+  longitude = "lon",
+  pollutant = "pm10",
+  key=TRUE,
+  main="2019",
+  popup = "site",
+  limits=c(min(aq_data$pm10, na.rm = TRUE),30)
+)
+
+```
