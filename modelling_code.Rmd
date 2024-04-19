@@ -11,64 +11,60 @@ library(latex2exp)
 ```
 
 
-```{r plot chosen predictor variables}
+```{r plot chosen predictor variables (fig 6.10)}
 #Renaming for legend
 panel <- panel |> rename(Site=site)
 
+# Assigning alpha values to try and make other sites more visible
+panel$alpha_val <- c(1)
+panel <- within(panel, alpha_val[code == 'DUNM'] <- c(0.00005))
+panel <- within(panel, alpha_val[code == 'DUN7'] <- c(0.1))
+panel <- within(panel, alpha_val[code == 'DUN6'] <- c(0.3))
+panel <- within(panel, alpha_val[code == 'DUN5'] <- c(0.5))
+panel <- within(panel, alpha_val[code == 'DUN4'] <- c(0.7))
+
 #Create scatter plots of each predictor against NOx, add smoothing to help illustrate and possible relationship
-ws_g<-ggplot(data=panel, aes(x=nox, y=ws))+
-  geom_point(aes(color=Site))+
+ws_g<-ggplot(data=panel, aes(x=ws, y=nox))+
+  geom_point(aes(color=Site, alpha=alpha_val))+
   theme_classic() +
-  theme(legend.position="none")+
+  theme(legend.position="none") +
+  scale_alpha(guide = 'none') +
   ggtitle("Wind Speed") +
-  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
-  ylab(TeX(r'(Speed, $ms^{-1}$)')) +
-  geom_smooth()
+  ylab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  xlab(TeX(r'(Speed, $ms^{-1}$)')) +
+  geom_smooth() +
+  scale_y_continuous(trans = "log")
 
-air_g<-ggplot(data=panel, aes(x=nox, y=air_temp))+
-  geom_point(aes(color=Site))+
+
+air_g<-ggplot(data=panel, aes(x=air_temp, y=nox))+
+  geom_point(aes(color=Site, alpha=alpha_val))+
   theme_classic() +
-  theme(legend.position="none")+
+  theme(legend.position="none") +
+  scale_alpha(guide = 'none') +
   ggtitle("Air Temperature") +
-  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
-  ylab(TeX(r'(Temperature, $^{\circ}C$)')) +
-  geom_smooth()
+  ylab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  xlab(TeX(r'(Temperature, $^{\circ}C$)')) +
+  geom_smooth() +
+  scale_y_continuous(trans = "log")
 
-trend_g<-ggplot(data=panel, aes(x=nox, y=trend))+
-  geom_point(aes(color=Site))+
+wd_g<-ggplot(data=panel, aes(x=wd, y=nox))+
+  geom_point(aes(color=Site, alpha=alpha_val))+
   theme_classic() +
-  theme(legend.position="none")+
-  ggtitle("Trend Component") +
-  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
-  ylab(TeX(r'(Level, $\mu$g/$m^3$)')) +
-  geom_smooth()
-
-seas_g<-ggplot(data=panel, aes(x=nox, y=season1))+
-  geom_point(aes(color=Site))+
-  theme_classic() +
-  theme(legend.position="none")+
-  ggtitle("Seasonal Component") +
-  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
-  ylab(TeX(r'(Level, $\mu$g/$m^3$)')) +
-  geom_smooth()
-
-wd_g<-ggplot(data=panel, aes(x=nox, y=wd))+
-  geom_point(aes(color=Site))+
-  theme_classic() +
-  theme(legend.position="none")+
+  theme(legend.position="none") +
+  scale_alpha(guide = 'none') +
   ggtitle("Wind Direction") +
-  xlab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
-  ylab(TeX(r'(Bearing, degrees)')) +
-  geom_smooth()
+  ylab(TeX(r'($NO_x$, $\mu$g/$m^3$)')) +
+  xlab(TeX(r'(Bearing, degrees)')) +
+  geom_smooth() +
+  scale_y_continuous(trans = "log")
 
 #Combine all plots together into a grid
-pred_plot <-ggarrange(ws_g,air_g,trend_g,seas_g,wd_g, ncol=3, nrow=2, common.legend = TRUE, legend="bottom")
+pred_plot <-ggarrange(ws_g,air_g,wd_g, ncol=3, nrow=1, common.legend = TRUE, legend="bottom")
 #Add title
 annotate_figure(pred_plot, top = text_grob("Potential predictor variables",face="bold", size=18))
 ```
 
 ```{r create fixed effects model}
-panel <- panel |> rename(site=Site)
 # Creating fixed effects model. 'wd' not included in final model, kept here as an example
 # of an insignificant predictor which was discarded for final model
 fixed <- plm(nox ~  trend + season1 + ws + air_temp + wd, data=panel, index=c("site", "date"), model="within") 
