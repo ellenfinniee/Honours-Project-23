@@ -64,67 +64,15 @@ write_csv(aq_data, "aq_data.csv")
 ```
 
 
-```{r filtering and cleaning bus data}
 
-aq_data = read.csv("aq_data.csv")
+```{r map plots (figs 5.1 and 8.1)}
+# Plot monitor locations in the city
+mapView(monitor_locations, map.types="OpenStreetMap",
+          layer.name="Air Quality Monitors", legend=TRUE,cex=20)
 
-#Extracts the area name from the raw data. Note this takes ~25 mins to run
-for(i in 1:nrow(aq_data)){
-  aq_data[i, 4]<-paste(substr(aq_data[i, 4], 1,10), substr(aq_data[i, 4],
-                                                           12,19), sep=" ")
-}
-
-# Format data into R recognised date format
-aq_data$date <- as.POSIXct(aq_data$date, format = "%Y-%m-%d %H:%M:%S")
-
-# Create latitude and longitude columns then update to reflect that of each indiviual station
-aq_data$lat <- c(56.47543)
-aq_data$lon <- c(-2.959861)
-
-aq_data <- within(aq_data, lat[code == 'DUN4'] <- c(56.46733))
-aq_data <- within(aq_data, lat[code == 'DUN6'] <- c(56.46513))
-aq_data <- within(aq_data, lat[code == 'DUNM'] <- c(56.46426))
-aq_data <- within(aq_data, lat[code == 'DUN5'] <- c(56.46238))
-aq_data <- within(aq_data, lat[code == 'DUN7'] <- c(56.45974))
-
-aq_data <- within(aq_data, lon[code == 'DUN4'] <- c(-2.943423))
-aq_data <- within(aq_data, lon[code == 'DUN6'] <- c(-2.993867))
-aq_data <- within(aq_data, lon[code == 'DUNM'] <- c(-2.971386))
-aq_data <- within(aq_data, lon[code == 'DUN5'] <- c(-2.967390))
-aq_data <- within(aq_data, lon[code == 'DUN7'] <- c(-2.970708))
-
-
-```
-
-
-
-```{r map plots (figs 5.1, 5.2 and 5.3)}
 # Generate plot of all bus scores in Dundee with added markers to reflect positions of air quality monitors
 mapView(merged_data, map.types="OpenStreetMap", layer.name="Bus Scores", zcol = "weekday_score", legend.pos="bottomright", zoom=10)+
   mapView(monitor_locations, map.types="OpenStreetMap",
           layer.name="Air Quality Monitors", col.regions="white",color="white", legend=FALSE)
-
-# Plot mapped air quality for both NOx and PM_10
-polarMap(
-  aq_data,
-  latitude = "lat",
-  longitude = "lon",
-  pollutant = "nox",
-  key=TRUE,
-  main="2019",
-  popup = "site",
-  limits=c(min(aq_data$nox, na.rm = TRUE),80)
-)
-
-polarMap(
-  aq_data,
-  latitude = "lat",
-  longitude = "lon",
-  pollutant = "pm10",
-  key=TRUE,
-  main="2019",
-  popup = "site",
-  limits=c(min(aq_data$pm10, na.rm = TRUE),30)
-)
 
 ```
