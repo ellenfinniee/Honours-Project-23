@@ -13,6 +13,7 @@ library(tsibble)
 library(plm)
 library(latex2exp)
 library(feasts)
+library(openair)
 ```
 
 ```{r initial import of air quality data and CSV creation}
